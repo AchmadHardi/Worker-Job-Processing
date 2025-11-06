@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Models\NotificationJob;
 use Illuminate\Support\Facades\Validator;
 
 class NotificationController extends Controller
@@ -27,13 +28,16 @@ class NotificationController extends Controller
 
         return DB::transaction(function () use ($payload, $idempotencyKey) {
             if ($idempotencyKey) {
-                $existing = DB::table('notification_jobs')->where('idempotency_key', $idempotencyKey)->first();
+                $existing = NotificationJob::where('idempotency_key', $idempotencyKey)->first();
                 if ($existing) {
-                    return response()->json(['job_id' => $existing->id, 'status' => $existing->status], 201);
+                    return response()->json([
+                        'job_id' => $existing->id,
+                        'status' => $existing->status
+                    ], 201);
                 }
             }
 
-            $id = DB::table('notification_jobs')->insertGetId([
+            $job = NotificationJob::create([
                 'channel' => $payload['channel'],
                 'recipient' => $payload['recipient'],
                 'message' => $payload['message'],
@@ -42,11 +46,12 @@ class NotificationController extends Controller
                 'max_attempts' => 5,
                 'next_run_at' => now(),
                 'idempotency_key' => $idempotencyKey,
-                'created_at' => now(),
-                'updated_at' => now(),
             ]);
 
-            return response()->json(['job_id' => $id, 'status' => 'PENDING'], 201);
+            return response()->json([
+                'job_id' => $job->id,
+                'status' => $job->status
+            ], 201);
         });
     }
 
