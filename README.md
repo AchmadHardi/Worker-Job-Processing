@@ -45,20 +45,20 @@ Request Body
 Response
 
 {
-  "job_id": 1,
-  "status": "PENDING"
+    "job_id": "581afe44-73ae-487d-bb22-7d96af5bf915",
+    "status": "PENDING"
 }
 
 GET /internal/queue/stats
 Menampilkan statistik antrian:
 
 {
-  "pending": 2,
-  "retry": 1,
+  "pending": 0,
+  "retry": 0,
   "processing": 0,
-  "success": 5,
+  "success": 4,
   "failed": 0,
-  "avg_attempts_success": 1.3
+  "avg_attempts_success": 0
 }
 
 🧠 Penjelasan Keputusan Teknis
