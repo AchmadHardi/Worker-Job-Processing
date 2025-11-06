@@ -37,6 +37,7 @@ class NotificationController extends Controller
                 }
             }
 
+
             $job = NotificationJob::create([
                 'channel' => $payload['channel'],
                 'recipient' => $payload['recipient'],
@@ -48,12 +49,72 @@ class NotificationController extends Controller
                 'idempotency_key' => $idempotencyKey,
             ]);
 
+
+            $success = rand(1, 100) <= 70;
+            $attempts = $job->attempts + 1;
+
+            if ($success) {
+                $job->update([
+                    'status' => 'SUCCESS',
+                    'attempts' => $attempts,
+                    'processed_at' => now(),
+                ]);
+            } else {
+                if ($attempts >= $job->max_attempts) {
+                    $job->update([
+                        'status' => 'FAILED',
+                        'attempts' => $attempts,
+                        'last_error' => 'Simulated failure after max attempts',
+                    ]);
+                } else {
+                    $delay = pow(2, $attempts);
+                    $job->update([
+                        'status' => 'RETRY',
+                        'attempts' => $attempts,
+                        'next_run_at' => now()->addSeconds($delay),
+                        'last_error' => 'Temporary failure, retry scheduled',
+                    ]);
+                }
+            }
+
+
+            $final = $job->fresh();
+
+            if ($final->status === 'SUCCESS') {
+                return response()->json([
+                    'job_id' => $final->id,
+                    'status' => $final->status,
+                    'attempts' => $final->attempts,
+                ], 200);
+            }
+
+            if ($final->status === 'RETRY') {
+                return response()->json([
+                    'job_id' => $final->id,
+                    'status' => $final->status,
+                    'attempts' => $final->attempts,
+                    'next_run_at' => $final->next_run_at,
+                ], 202);
+            }
+
+            if ($final->status === 'FAILED') {
+                return response()->json([
+                    'job_id' => $final->id,
+                    'status' => $final->status,
+                    'attempts' => $final->attempts,
+                    'last_error' => $final->last_error,
+                ], 500);
+            }
+
+
+
             return response()->json([
                 'job_id' => $job->id,
                 'status' => $job->status
             ], 201);
         });
     }
+
 
     public function stats()
     {

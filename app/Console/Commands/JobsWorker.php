@@ -39,7 +39,7 @@ class JobsWorker extends Command
                 ->update([
                     'status' => 'PROCESSING',
                     'updated_at' => now(),
-                    'next_run_at' => now()->addSeconds(60), 
+                    'next_run_at' => now()->addSeconds(60),
                 ]);
 
             DB::commit();
@@ -88,20 +88,22 @@ class JobsWorker extends Command
 
     private function processJob($job)
     {
+        $current = DB::table('notification_jobs')->where('id', $job->id)->first();
+        $attempts = $current->attempts + 1;
+        $max = $current->max_attempts;
+
         $success = rand(1, 100) <= 70;
 
         if ($success) {
             DB::table('notification_jobs')->where('id', $job->id)->update([
                 'status' => 'SUCCESS',
+                'attempts' => $attempts,
                 'processed_at' => now(),
                 'updated_at' => now(),
             ]);
-            $this->info("✅ Job {$job->id} success");
+            $this->info("✅ Job {$job->id} success (attempt {$attempts})");
             return;
         }
-
-        $attempts = $job->attempts + 1;
-        $max = $job->max_attempts;
 
         if ($attempts >= $max) {
             DB::table('notification_jobs')->where('id', $job->id)->update([
@@ -126,6 +128,6 @@ class JobsWorker extends Command
             'updated_at' => now(),
         ]);
 
-        $this->warn("🔁 Job {$job->id} retry in {$delay}s");
+        $this->warn("🔁 Job {$job->id} retry in {$delay}s (attempt {$attempts})");
     }
 }
