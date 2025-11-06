@@ -17,6 +17,9 @@ class JobsWorker extends Command
         $this->info("Worker started...");
 
         while (true) {
+
+            $this->recoverStuckJobs();
+
             DB::beginTransaction();
 
             $job = DB::table('notification_jobs')
@@ -33,14 +36,52 @@ class JobsWorker extends Command
             }
 
             DB::table('notification_jobs')->where('id', $job->id)
-                ->update(['status' => 'PROCESSING', 'updated_at' => now()]);
+                ->update([
+                    'status' => 'PROCESSING',
+                    'updated_at' => now(),
+                    'next_run_at' => now()->addSeconds(60), 
+                ]);
 
-            DB::commit(); 
+            DB::commit();
 
             try {
                 $this->processJob($job);
             } catch (Throwable $e) {
                 Log::error("Job {$job->id} failed: " . $e->getMessage());
+            }
+        }
+    }
+
+    private function recoverStuckJobs()
+    {
+        $timeoutSeconds = 60;
+
+        $stuckJobs = DB::table('notification_jobs')
+            ->where('status', 'PROCESSING')
+            ->where('updated_at', '<', now()->subSeconds($timeoutSeconds))
+            ->get();
+
+        foreach ($stuckJobs as $job) {
+            $attempts = $job->attempts + 1;
+            $max = $job->max_attempts;
+
+            if ($attempts >= $max) {
+                DB::table('notification_jobs')->where('id', $job->id)->update([
+                    'status' => 'FAILED',
+                    'last_error' => 'Timeout after PROCESSING crash',
+                    'attempts' => $attempts,
+                    'updated_at' => now(),
+                ]);
+                $this->error("⚠️ Job {$job->id} marked as FAILED due to timeout");
+            } else {
+                DB::table('notification_jobs')->where('id', $job->id)->update([
+                    'status' => 'RETRY',
+                    'attempts' => $attempts,
+                    'next_run_at' => now()->addSeconds(10),
+                    'last_error' => 'Recovered from PROCESSING timeout',
+                    'updated_at' => now(),
+                ]);
+                $this->warn("🔁 Job {$job->id} recovered to RETRY");
             }
         }
     }
